@@ -10,7 +10,7 @@ Essa é uma traduçao (com pequenos ajustes) do material [transformers quicktour
 
 ## Introdução
 
-Este post mostrará como usar o ```pipeline()``` para inferência, como carregar um modelo pré-treinado e um pré-processador e treinar um modelo com **PyTorch**.
+Este post mostrará como usar o ```pipeline()``` para inferência, como carregar um modelo pré-treinado, um pré-processador e treinar um modelo com **PyTorch**.
 
 Antes de começar, certifique-se de ter todas as bibliotecas necessárias instaladas:
 
@@ -25,7 +25,7 @@ Você pode usar o ```pipeline()``` pronto para uso para muitas Tarefas (Tabela 1
 
 |Descriçao da Tarefa|Identificador do Pipeline|
 |----|----|
-|Análise de sentimento|pipeline(task=“sentiment-analysis”)|
+|Classificação de texto|pipeline(task=“sentiment-analysis”)|
 |Geração de Texto|pipeline(task=“text-generation”)|
 |reconhecimento automático de fala|pipeline(task=“automatic-speech-recognition”)|
 
@@ -40,9 +40,10 @@ Neste guia, você usará o ```pipeline()``` para análise de sentimentos como um
 from transformers import pipeline
 classifier = pipeline("sentiment-analysis")
 classifier("We are very happy to show you the Transformers library.")
+```
 
-Saída: 
-    [{'label': 'POSITIVE', 'score': 0.9997795224189758}]
+```
+[{'label': 'POSITIVE', 'score': 0.9997795224189758}]
 ```
 
 Se você tiver mais de uma entrada, passe suas entradas como uma lista para o ```pipeline()``` para retornar uma lista de dicionários:
@@ -53,15 +54,25 @@ classifier = pipeline("sentiment-analysis")
 results = classifier(["We are very happy to show you the Transformers library.", "We hope you don't hate it."])
 for result in results:
     print(f"label: {result['label']}, with score: {round(result['score'], 4)}")
+```
 
-Saída:
+```
     label: POSITIVE, with score: 0.9998
     label: NEGATIVE, with score: 0.5309
 ```
 
 ## Exemplo reconhecimento automático de fala
 
-O ```pipeline()``` também pode iterar um conjunto de dados inteiro para qualquer tarefa que você desejar. Para este exemplo, vamos escolher o **reconhecimento automático de fala** como nossa tarefa:
+O ```pipeline()``` também pode iterar um conjunto de dados inteiro para qualquer tarefa que você desejar. Para este exemplo, vamos escolher o pipeline **reconhecimento automático de fala** utilizando o modelo [facebook/wav2vec2-base-960h](https://huggingface.co/facebook/wav2vec2-base-960h)
+
+Instale a dependência:
+
+```bash
+pip install librosa soundfile 
+```
+
+Carregue um conjunto de dados de áudio que você gostaria de iterar.
+Por exemplo, carregue o conjunto de dados [MInDS-14](https://huggingface.co/datasets/PolyAI/minds14)
 
 ```python
 import torch
@@ -70,18 +81,59 @@ from datasets import load_dataset, Audio
 
 speech_recognizer = pipeline("automatic-speech-recognition", model="facebook/wav2vec2-base-960h")
 
-# Carregue um conjunto de dados de áudio que você gostaria de iterar. 
-# Por exemplo, carregue o conjunto de dados MInDS-14.
+# carregando o conjunto de dados MInDS-14
 dataset = load_dataset("PolyAI/minds14", name="en-US", split="train")
 
-# You need to make sure the sampling rate of the dataset 
-# matches the sampling rate facebook/wav2vec2-base-960h was trained on:
+# Você precisa ter certeza de que a taxa de amostragem do conjunto de dados 
+# corresponde à taxa de amostragem em que facebook/wav2vec2-base-960h foi treinado:
 dataset = dataset.cast_column("audio", Audio(sampling_rate=speech_recognizer.feature_extractor.sampling_rate))
 
-# The audio files are automatically loaded and resampled when calling the "audio" column. 
-# Extract the raw waveform arrays from the first 4 samples and pass it as a list to the pipeline:
+# Os arquivos de áudio são automaticamente carregados e reamostrados ao chamar a coluna "audio".
+# Extraia os arrays de forma de onda bruta (raw waveform) das primeiras 4 amostras e passe-os como uma lista para o pipeline:
 result = speech_recognizer(dataset[:4]["audio"])
 print([d["text"] for d in result])
 ```
 
-For larger datasets where the inputs are big (like in speech or vision), you’ll want to pass a generator instead of a list to load all the inputs in memory. Take a look at the pipeline API reference for more information.
+```
+['I WOULD LIKE TO SET UP A JOINT ACCOUNT WITH MY PARTNER HOW DO I PROCEED WITH DOING THAT', 
+"FONDERING HOW I'D SET UP A JOIN TO HELL T WITH MY WIFE AND WHERE THE AP MIGHT BE", 
+... 
+'HOW DO I FURN A JOINA COUT']
+```
+
+Mais sobre datasets pode ser encontrado em [Hugging Face Dataset Quick Tour](https://huggingface.co/docs/datasets/quickstart)
+
+Para conjuntos de dados maiores onde as entradas são grandes (como fala ou visão), você desejará passar um gerador em vez de uma lista para carregar todas as entradas na memória. Dê uma olhada na referência da [API do pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines) para obter mais informações.
+
+## Use outro modelo e tokenizer no pipeline
+
+O ```pipeline()``` pode acomodar qualquer modelo (model) do [Hub](https://huggingface.co/models), facilitando a adaptação do ```pipeline()``` para outros casos de uso. Por exemplo, se você quiser um modelo capaz de lidar com texto em francês, encontre o nome do modelo realizando uma busca no [Hub](https://huggingface.co/models). Faça o filtro por task="Text classification", Language="fr" e sorte="liked" para encontrar um modelo apropriado. O resultado do [filtro anterior](https://huggingface.co/models?pipeline_tag=text-classification&language=fr&sort=likes) retorna o modelo BERT [bert-base-multilingual-uncased-sentiment](https://huggingface.co/nlptown/bert-base-multilingual-uncased-sentiment) ajustado (finetuned) para **análise de sentimento** que você pode usar para textos em francês. Este modelo ajustado retorna 1 a 5 estrelas e foi treinado com reviews de produtos. Segue um exemplo de uso do modelo encontrado (BERT) para análise de sentimento de um texto em inglês.
+
+```python
+from transformers import pipeline
+classifier = pipeline("sentiment-analysis", model='nlptown/bert-base-multilingual-uncased-sentiment')
+print(classifier("We are very happy to show you the Transformers library."))
+```
+
+```
+[{'label': '5 stars', 'score': 0.7495927214622498}]
+```
+
+É possível informar além do modelo para o ```pipeline``` um tokenizer diferente. Vamos identificar qual o tokenizer associado a determinado modelo, e informá-lo no parâmetro do ```pipeline```
+
+```python
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
+
+print(classifier("Nous sommes très heureux de vous présenter la bibliothèque 🤗 Transformers."))
+```
+
+```
+[{'label': '5 stars', 'score': 0.7272651791572571}]
+```
+
+Se não conseguir encontrar um modelo para seu caso de uso, você precisará ajustar um modelo pré-treinado em seus dados. Dê uma olhada no [tutorial de ajuste fino](https://huggingface.co/docs/transformers/training) para saber como. Por fim, depois de ajustar seu modelo pré-treinado, considere [compartilhar o modelo](https://huggingface.co/docs/transformers/model_sharing) com a comunidade no Hub para democratizar o aprendizado de máquina para todos!
